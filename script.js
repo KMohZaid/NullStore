@@ -825,7 +825,7 @@ async function loadReleases() {
     if (DOM.loading) DOM.loading.style.display = "block";
     if (DOM.error) DOM.error.style.display = "none";
 
-    const dataResp = await fetch("https://github.com/nullcpy/nullcpy.github.io/raw/refs/heads/main/data.json");
+    const dataResp = await fetch("https://cdn.jsdelivr.net/gh/nullcpy/nullcpy.github.io@main/data.json");
     if (!dataResp.ok) throw new Error(`Failed to load data.json (${dataResp.status})`);
     const data = await dataResp.json();
 
