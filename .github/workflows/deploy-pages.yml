@@ -55,12 +55,12 @@ jobs:
       # Publish only the site itself. upload-pages-artifact has no exclude input,
       # and _config.yml's `exclude:` list is inert because Jekyll never runs here --
       # so the published surface is defined solely by what this step stages. Keep it
-      # the same five files the mirrors ship (vercel.json / wrangler.jsonc), minus
+      # the same files the mirrors ship (vercel.json / wrangler.jsonc), minus
       # _headers, which is Cloudflare-only config.
       - name: Stage site for publishing
         run: |
           mkdir -p dist
-          cp index.html style.css script.js data.json social-preview.svg dist/
+          cp index.html style.css script.js data.json social-preview.svg share.html dist/
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v5
