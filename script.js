@@ -2059,8 +2059,9 @@ function createObtainiumInstructions(app, brand) {
   const repoUrl = `https://github.com/${CONFIG.owner}/${CONFIG.repo}`;
   const obtainiumLatestUrl = "https://github.com/ImranR98/Obtainium/releases/latest";
 
-  const aboutAppForObtainium = "Auto-added using **NullStore**\n" 
-        + `${window.location.protocol}//${window.location.host}/?q=${encodeURIComponent(app?.appName)}\n\n`
+  const baseUrl = `${window.location.protocol}//${window.location.host}${window.location.pathname.replace(/\/$/, '')}`;
+  const aboutAppForObtainium = "Auto-added using **NullStore**\n"
+        + `${baseUrl}/?q=${encodeURIComponent(app?.appName)}\n\n`
         + "NOTE : Only edit app details in obtainium if you know what you are doing, it can break update tracker";
 
   const rawSlug = app?.appKey || normalizeForSearch(app?.appName || "app");
