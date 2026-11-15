@@ -269,6 +269,20 @@ document.addEventListener("DOMContentLoaded", () => {
     updateSortUI();
   }
 
+  // Check for direct link parameters
+  const directPackage = urlParams.get("package");
+  const directVariant = urlParams.get("variant");
+  const directSubVariant = urlParams.get("subvariant");
+
+  if (directPackage) {
+    // Store direct link params for processing after data loads
+    window._directLinkParams = {
+      package: directPackage,
+      variant: directVariant,
+      subvariant: directSubVariant
+    };
+  }
+
   loadReleases();
 });
 
@@ -809,6 +823,253 @@ function syncUrlParams() {
   history.replaceState(null, "", url);
 }
 
+// Handle direct links with package/variant parameters
+function handleDirectLink(params) {
+  const packageKey = normalizeForSearch(params.package);
+  const variantKey = params.variant ? normalizeForSearch(params.variant) : null;
+  const subvariantKey = params.subvariant ? normalizeForSearch(params.subvariant) : null;
+
+  // Find matching app
+  const matchedApp = currentAppCatalog.find(app => {
+    const si = getSI(app);
+    return si.key === packageKey || si.name === packageKey;
+  });
+
+  if (!matchedApp) {
+    console.warn('Direct link: App not found for package:', params.package);
+    return;
+  }
+
+  // Find the card in DOM
+  const cardIndex = currentAppCatalog.indexOf(matchedApp);
+  const card = DOM.builds?.querySelector(`.app-card[data-app-index="${cardIndex}"]`);
+
+  if (!card) {
+    console.warn('Direct link: Card not found in DOM');
+    return;
+  }
+
+  // Expand the card
+  ensureAppCardBody(card);
+  card.classList.add("open");
+  card.dataset.directLink = "true";
+
+  // Find matching brand and variant if specified
+  let targetBrand = null;
+  let targetVariant = null;
+
+  if (variantKey && matchedApp.brands) {
+    for (const brand of matchedApp.brands) {
+      const variants = brand.variants || [];
+      for (const v of variants) {
+        const vKey = v.variant ? normalizeForSearch(v.variant) : null;
+        const svKey = v.subVariant ? normalizeForSearch(v.subVariant) : null;
+
+        if (vKey === variantKey || svKey === variantKey || svKey === subvariantKey) {
+          targetBrand = brand;
+          targetVariant = v;
+          break;
+        }
+      }
+      if (targetBrand) break;
+    }
+  }
+
+  // If no specific variant found, use first brand
+  if (!targetBrand && matchedApp.brands && matchedApp.brands.length > 0) {
+    targetBrand = matchedApp.brands[0];
+    targetVariant = targetBrand.variants?.[0];
+  }
+
+  // Mark direct link mode and inject share button
+  if (targetBrand && targetVariant) {
+    setTimeout(() => {
+      injectDirectLinkView(card, matchedApp, targetBrand, targetVariant);
+
+      // Scroll to card
+      const rect = card.getBoundingClientRect();
+      window.scrollTo({
+        top: rect.top + window.scrollY - 20,
+        behavior: "smooth"
+      });
+    }, 100);
+  }
+}
+
+// Inject a simplified direct link view into the app card
+function injectDirectLinkView(card, app, brand, variant) {
+  const bodyInner = card.querySelector(".app-card-body-inner");
+  if (!bodyInner) return;
+
+  // Find the brand entry in the DOM
+  const brandEntries = bodyInner.querySelectorAll(".patch-entry");
+  let targetBrandEntry = null;
+
+  for (const entry of brandEntries) {
+    const brandNameEl = entry.querySelector(".patch-engine-badge");
+    if (brandNameEl && brandNameEl.textContent.trim() === brand.brandName) {
+      targetBrandEntry = entry;
+      break;
+    }
+  }
+
+  if (!targetBrandEntry) return;
+
+  // Create direct link view with share button
+  const variantLabel = formatVariantLabel(variant.variant, variant.subVariant);
+  const shareUrl = buildShareUrl(app, variant);
+
+  // Find latest stable build for this variant
+  const builds = brand.builds || [];
+  const stableBuilds = builds.filter(b =>
+    b.releaseType === "stable" &&
+    (b.variant || null) === (variant.variant || null) &&
+    (b.subVariant || null) === (variant.subVariant || null)
+  ).sort((a, b) => {
+    const toTs = (v) => (typeof v === "number" ? v : Date.parse(v) || 0);
+    return toTs(b.publishedAt) - toTs(a.publishedAt);
+  });
+
+  const latestBuild = stableBuilds[0];
+
+  if (!latestBuild) return;
+
+  // Check if MicroG notice is needed
+  const needsMicrog = CONFIG.appNotices.some(notice =>
+    notice.triggers.some(trigger => normalizeForSearch(app.appName).includes(trigger))
+  );
+
+  // Create simplified view
+  const directLinkHtml = createDirectLinkMarkup(app, brand, variant, latestBuild, shareUrl, needsMicrog);
+
+  // Insert before the brand entry
+  const container = document.createElement("div");
+  container.className = "direct-link-container";
+  container.innerHTML = directLinkHtml;
+  targetBrandEntry.parentNode.insertBefore(container, targetBrandEntry);
+
+  // Hide other brands and variants
+  bodyInner.querySelectorAll(".patch-entry").forEach(entry => {
+    if (entry !== targetBrandEntry) {
+      entry.style.display = "none";
+    }
+  });
+
+  // Hide variant rows except the target
+  const variantRows = targetBrandEntry.querySelectorAll(".variant-row");
+  variantRows.forEach(row => {
+    const nameChip = row.querySelector(".variant-name-chip");
+    if (nameChip && nameChip.textContent.trim() !== variantLabel) {
+      row.style.display = "none";
+    }
+  });
+}
+
+function buildShareUrl(app, variant) {
+  const url = new URL(window.location.href);
+  url.searchParams.set("package", app.appKey);
+  if (variant.variant) url.searchParams.set("variant", variant.variant);
+  if (variant.subVariant) url.searchParams.set("subvariant", variant.subVariant);
+  url.searchParams.delete("q");
+  url.searchParams.delete("sort");
+  return url.toString();
+}
+
+function createDirectLinkMarkup(app, brand, variant, build, shareUrl, needsMicrog) {
+  const assetsByArch = groupAssetsByArchitecture(build.assets);
+  const arm64Assets = assetsByArch.arm64 || [];
+  const arm32Assets = assetsByArch.arm || [];
+  const universalAssets = assetsByArch.all || [];
+
+  // Prefer universal, then arm64, then arm32
+  const primaryAsset = (universalAssets[0] || arm64Assets[0] || arm32Assets[0]);
+  const secondaryAsset = universalAssets[0] ? (arm64Assets[0] || arm32Assets[0]) : arm32Assets[0];
+
+  let downloadSection = "";
+
+  if (primaryAsset) {
+    const primaryArch = primaryAsset.arch;
+    const primaryLabel = capitalizeArch(primaryArch);
+    const primarySize = formatBytes(primaryAsset.size);
+
+    downloadSection += `
+      <div class="direct-link-download primary">
+        <div class="download-label">
+          <span class="download-arch">${primaryLabel}</span>
+          <span class="download-hint">Try this first</span>
+        </div>
+        <a href="${primaryAsset.browser_download_url}" class="direct-download-btn" download>
+          Download ${escapeHtml(app.appName)} (${primarySize})
+        </a>
+      </div>
+    `;
+  }
+
+  if (secondaryAsset && secondaryAsset !== primaryAsset) {
+    const secondaryArch = secondaryAsset.arch;
+    const secondaryLabel = capitalizeArch(secondaryArch);
+    const secondarySize = formatBytes(secondaryAsset.size);
+
+    downloadSection += `
+      <div class="direct-link-download secondary">
+        <div class="download-label">
+          <span class="download-arch">${secondaryLabel}</span>
+          <span class="download-hint">If first one fails, try this</span>
+        </div>
+        <a href="${secondaryAsset.browser_download_url}" class="direct-download-btn secondary" download>
+          Download ${escapeHtml(app.appName)} (${secondarySize})
+        </a>
+      </div>
+    `;
+  }
+
+  let microgNotice = "";
+  if (needsMicrog) {
+    const morpheLink = CONFIG.appNotices.find(n => n.triggers.some(t => normalizeForSearch(app.appName).includes(t)))?.links?.find(l => l.label === "Morphe");
+    const revancedLink = CONFIG.appNotices.find(n => n.triggers.some(t => normalizeForSearch(app.appName).includes(t)))?.links?.find(l => l.label === "ReVanced");
+
+    microgNotice = `
+      <div class="direct-link-notice">
+        <div class="notice-icon">⚠️</div>
+        <div class="notice-content">
+          <div class="notice-title">Login Issue</div>
+          <div class="notice-text">Signing into Google account requires MicroG. Please install one before trying to sign in.</div>
+          <div class="notice-links">
+            ${morpheLink ? `<a href="${morpheLink.url}" target="_blank" rel="noopener noreferrer">Morphe (Recommended)${EXTERNAL_LINK_ARROW}</a>` : ''}
+            ${revancedLink ? `<a href="${revancedLink.url}" target="_blank" rel="noopener noreferrer">ReVanced${EXTERNAL_LINK_ARROW}</a>` : ''}
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  return `
+    <div class="direct-link-header">
+      <h3>${escapeHtml(app.appName)} • ${escapeHtml(brand.brandName)}</h3>
+      <div class="direct-link-meta">
+        <span class="variant-badge">${escapeHtml(formatVariantLabel(variant.variant, variant.subVariant))}</span>
+        <span class="version-badge">v${escapeHtml(build.version || build.build)}</span>
+        <span class="date-badge">${formatDate(build.publishedAt)}</span>
+      </div>
+    </div>
+
+    ${microgNotice}
+
+    <div class="direct-link-downloads">
+      ${downloadSection}
+    </div>
+
+    <div class="direct-link-actions">
+      <button class="share-link-btn" onclick="copyToClipboard('${escapeHtml(shareUrl)}', 'Share link copied!')" type="button">
+        📋 Copy Share Link
+      </button>
+      <button class="view-all-btn" onclick="this.closest('.direct-link-container').style.display='none'; this.closest('.app-card-body-inner').querySelectorAll('.patch-entry, .variant-row').forEach(el => el.style.display='')" type="button">
+        View All Versions
+      </button>
+    </div>
+  `;
+}
+
 // Clean up legacy localStorage catalog caches
 try {
   localStorage.removeItem("data_cache");
@@ -839,6 +1100,12 @@ async function loadReleases() {
     if (DOM.loading) DOM.loading.style.display = "none";
     updateLastUpdateTimestamp(data.updated_at);
     filterAndRenderReleases();
+
+    // Handle direct link after data is loaded and rendered
+    if (window._directLinkParams) {
+      handleDirectLink(window._directLinkParams);
+      delete window._directLinkParams;
+    }
   } catch (error) {
     console.error("Error loading data:", error);
     setPillState("error", "Failed to load data");
@@ -1316,10 +1583,41 @@ function createBrandMarkup(app, brand) {
         `);
       }
 
+      // Generate share link using app + source (brand) + variant
+      const baseUrl = `${window.location.protocol}//${window.location.host}${window.location.pathname.replace(/\/$/, '')}`;
+      let shareUrl = `${baseUrl}/share.html?app=${encodeURIComponent(app.appKey)}&source=${encodeURIComponent(brand.brandKey)}`;
+
+      // Always include variant and subvariant to specify the exact variant
+      // Use "standard" for null values to make it explicit
+      const variantValue = variant.variant || "standard";
+      const subvariantValue = variant.subVariant || "standard";
+
+      shareUrl += `&variant=${encodeURIComponent(variantValue)}`;
+      shareUrl += `&subvariant=${encodeURIComponent(subvariantValue)}`;
+
+      const shareButtons = `
+        <div class="variant-action-buttons">
+          <button class="share-variant-btn"
+                  onclick="event.stopPropagation(); copyToClipboard('${escapeHtml(shareUrl)}', 'Share link copied!')"
+                  type="button"
+                  title="Copy share link for ${escapeHtml(vLabel)}">
+            📋 Share
+          </button>
+          <a href="${escapeHtml(shareUrl)}"
+             class="open-variant-btn"
+             onclick="event.stopPropagation()"
+             target="_blank"
+             title="Open share page for ${escapeHtml(vLabel)}">
+            🔗 Open
+          </a>
+        </div>
+      `;
+
       return `
         <div class="variant-row">
           <div class="variant-title-wrap">
             <span class="variant-name-chip">${escapeHtml(vLabel)}</span>
+            ${shareButtons}
           </div>
           <div class="variant-channels-grid">
             ${channelBoxes.join("")}

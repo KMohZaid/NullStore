@@ -953,6 +953,36 @@ body.light-mode .variant-row {
     color: var(--accent-variant);
 }
 
+.variant-action-buttons {
+    display: flex;
+    gap: 6px;
+    margin-left: auto;
+}
+
+.share-variant-btn,
+.open-variant-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 10px;
+    border-radius: var(--radius-sm);
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    font-size: 0.72rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    text-decoration: none;
+}
+
+.share-variant-btn:hover,
+.open-variant-btn:hover {
+    background: var(--accent-glow);
+    border-color: var(--accent);
+    color: var(--accent);
+    transform: translateY(-1px);
+}
 
 .variant-channels-grid {
     display: flex;

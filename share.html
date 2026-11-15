@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#1a1814" id="themeColorMeta">
+    <title>NullStore - Loading...</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,600;12..96,700;12..96,800&family=Inter:wght@400;500;600;700&family=Geist+Mono:wght@100..900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css?v=35">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect x='14' y='20' width='72' height='70' rx='10' fill='%230B1220'/><path d='M30 30v-6c0-9 8-16 20-16s20 7 20 16v6' fill='none' stroke='%2300D084' stroke-width='7' stroke-linecap='round'/><text x='50' y='56' text-anchor='middle' dominant-baseline='middle' font-size='60' font-family='Arial,sans-serif' font-weight='700' fill='%2300D084'>&#248;</text></svg>">
+    <style>
+        .share-container { max-width: 900px; margin: 0 auto; padding: 24px 16px; }
+        .share-header { margin-bottom: 32px; }
+        .share-header h1 { font-size: 2rem; font-weight: 700; margin-bottom: 16px; color: var(--text); }
+        .share-header .source-badge { display: inline-block; padding: 6px 14px; background: var(--accent-glow); border: 1px solid var(--accent); border-radius: 20px; font-size: 0.85rem; font-weight: 700; color: var(--accent); letter-spacing: 0.03em; margin-bottom: 12px; }
+        .share-header .variant-label { font-size: 1.1rem; color: var(--text-secondary); font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; }
+        .share-notice { background: linear-gradient(90deg, var(--accent-glow), transparent); border: 1px solid var(--accent); border-radius: 12px; padding: 20px; margin-bottom: 24px; }
+        .share-notice .notice-title { font-weight: 600; color: var(--accent); margin-bottom: 8px; font-size: 1rem; }
+        .share-notice .notice-text { color: var(--text-secondary); margin-bottom: 12px; line-height: 1.5; }
+        .share-notice .notice-links { display: flex; gap: 12px; flex-wrap: wrap; }
+        .share-notice .notice-links a { display: inline-flex; align-items: center; gap: 4px; padding: 8px 16px; background: var(--accent); color: var(--bg); border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 0.9rem; transition: opacity 0.2s; }
+        .share-notice .notice-links a:hover { opacity: 0.9; }
+        .channel-section { margin-bottom: 32px; }
+        .channel-header { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+        .channel-label { font-size: 1.1rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; }
+        .channel-label.stable { color: var(--accent-stable); }
+        .channel-label.beta { color: var(--accent-beta); }
+        .channel-meta { font-size: 0.9rem; color: var(--text-muted); font-family: var(--font-mono); }
+        .downloads-grid { display: grid; gap: 12px; }
+        .download-card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 12px; padding: 16px; transition: border-color 0.2s, transform 0.2s; }
+        .download-card:hover { border-color: var(--border-hover); transform: translateY(-2px); }
+        .download-card.primary { border-color: var(--accent-stable); background: var(--accent-stable-glow); }
+        .download-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px; }
+        .download-arch { font-size: 1rem; font-weight: 700; color: var(--text); margin-bottom: 4px; }
+        .download-hint { font-size: 0.8rem; color: var(--text-muted); font-weight: 500; }
+        .primary .download-hint { color: var(--accent-stable); font-weight: 600; }
+        .download-meta { text-align: right; font-size: 0.75rem; color: var(--text-muted); font-family: var(--font-mono); }
+        .download-btn { display: block; width: 100%; padding: 12px 20px; background: var(--accent); color: var(--bg); border: none; border-radius: 8px; font-size: 0.95rem; font-weight: 600; text-align: center; text-decoration: none; cursor: pointer; transition: opacity 0.2s; }
+        .download-btn:hover { opacity: 0.9; }
+        .secondary .download-btn { background: var(--text-secondary); }
+        .actions-section { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 32px; padding-top: 24px; border-top: 1px solid var(--border); }
+        .action-btn { flex: 1; min-width: 200px; padding: 12px 24px; background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px; font-size: 0.95rem; font-weight: 600; color: var(--text); cursor: pointer; transition: border-color 0.2s, background 0.2s; text-decoration: none; text-align: center; display: flex; align-items: center; justify-content: center; }
+        .action-btn:hover { border-color: var(--border-hover); background: var(--bg-elevated); }
+        .loading-state { text-align: center; padding: 60px 20px; }
+        .loading-spinner { width: 48px; height: 48px; border: 4px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; margin: 0 auto 20px; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .error-state { text-align: center; padding: 60px 20px; }
+        .error-icon { font-size: 3rem; margin-bottom: 16px; }
+        .error-message { color: var(--text-secondary); margin-bottom: 20px; line-height: 1.6; }
+        .back-link { color: var(--accent); text-decoration: none; font-weight: 600; }
+        .back-link:hover { text-decoration: underline; }
+    </style>
+</head>
+<body>
+    <header><div class="container"><h1><a href="/" style="text-decoration: none; color: inherit;">NullStore</a></h1></div></header>
+    <main>
+        <div class="share-container">
+            <div id="loadingState" class="loading-state"><div class="loading-spinner"></div><p>Loading app information...</p></div>
+            <div id="errorState" class="error-state" style="display: none;"><div class="error-icon">⚠️</div><p class="error-message">Could not find the requested app or source.</p><a href="/" class="back-link">← Browse all apps</a></div>
+            <div id="contentState" style="display: none;"></div>
+        </div>
+    </main>
+    <div id="toastNotification" class="toast-notification"></div>
+    <script src="script.js"></script>
+    <script>
+        async function loadSharePage() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const appKey = urlParams.get("app"), sourceKey = urlParams.get("source"), variantKey = urlParams.get("variant"), subvariantKey = urlParams.get("subvariant"), channelKey = urlParams.get("channel");
+            if (!appKey || !sourceKey) { showError("Missing required parameters. Share links need both app and source."); return; }
+            try {
+                const dataResp = await fetch("https://cdn.jsdelivr.net/gh/nullcpy/nullcpy.github.io@main/data.json");
+                if (!dataResp.ok) throw new Error("Failed to load data");
+                const data = await dataResp.json(), apps = Array.isArray(data.apps) ? data.apps : [];
+                const app = apps.find(a => a.appKey === appKey);
+                if (!app) { showError(`App "${appKey}" not found.`); return; }
+                const brand = (app.brands || []).find(b => b.brandKey === sourceKey);
+                if (!brand) { showError(`Source "${sourceKey}" not found for ${app.appName}.`); return; }
+                const variants = brand.variants || [];
+                let matchedVariant = null;
+                if (variantKey || subvariantKey) {
+                    const vKey = variantKey === "standard" ? null : variantKey, svKey = subvariantKey === "standard" ? null : subvariantKey;
+                    matchedVariant = variants.find(v => (v.variant || null) === vKey && (v.subVariant || null) === svKey);
+                    if (!matchedVariant) { showError(`Variant "${variantKey || 'standard'}" / "${subvariantKey || 'standard'}" not found.`); return; }
+                }
+                renderSharePage(app, brand, matchedVariant, channelKey, data);
+            } catch (error) { console.error("Error loading share page:", error); showError(error.message); }
+        }
+        function showError(message) {
+            document.getElementById("loadingState").style.display = "none";
+            const errorState = document.getElementById("errorState");
+            errorState.style.display = "block";
+            if (message) errorState.querySelector(".error-message").textContent = message;
+        }
+        function renderSharePage(app, brand, variant, channelFilter, data) {
+            const variantLabel = variant ? formatVariantLabel(variant.variant, variant.subVariant) : "All Variants";
+            document.title = `${app.appName} - ${brand.brandName} - ${variantLabel} - NullStore`;
+            const builds = brand.builds || [], needsMicrog = CONFIG.appNotices.some(notice => notice.triggers.some(trigger => normalizeForSearch(app.appName).includes(trigger)));
+            let content = `
+                <div class="share-header">
+                    <h1>${escapeHtml(app.appName)}</h1>
+                    <span class="source-badge">${escapeHtml(brand.brandName)}</span>
+                    <div class="variant-label">${escapeHtml(variantLabel)}</div>
+                </div>
+            `;
+            if (needsMicrog) {
+                const notice = CONFIG.appNotices.find(n => n.triggers.some(t => normalizeForSearch(app.appName).includes(t)));
+                content += `<div class="share-notice"><div class="notice-title">⚠️ ${escapeHtml(notice.title)}</div><div class="notice-text">${escapeHtml(notice.text)}</div><div class="notice-links">${notice.links.map(link => `<a href="${link.url}" target="_blank" rel="noopener noreferrer">${escapeHtml(link.label)} ${link.label === "Morphe" ? "(Recommended)" : ""}</a>`).join('')}</div></div>`;
+            }
+            const variantBuilds = builds.filter(b => (b.variant || null) === (variant.variant || null) && (b.subVariant || null) === (variant.subVariant || null));
+            if (variantBuilds.length === 0) { showError("No builds found for this variant."); return; }
+            const toTs = (v) => (typeof v === "number" ? v : Date.parse(v) || 0);
+            const stableBuilds = variantBuilds.filter(b => b.releaseType === "stable").sort((a, b) => toTs(b.publishedAt) - toTs(a.publishedAt));
+            const betaBuilds = variantBuilds.filter(b => b.releaseType === "beta").sort((a, b) => toTs(b.publishedAt) - toTs(a.publishedAt));
+            if ((!channelFilter || channelFilter === "stable") && stableBuilds.length > 0) content += renderChannelSection("Stable", stableBuilds[0], app);
+            if ((!channelFilter || channelFilter === "beta") && betaBuilds.length > 0) content += renderChannelSection("Beta", betaBuilds[0], app);
+            const shareUrl = window.location.href;
+            content += `<div class="actions-section"><button class="action-btn" onclick="copyToClipboard('${escapeHtml(shareUrl)}', 'Share link copied!')">📋 Copy Share Link</button><a href="/" class="action-btn">🏠 Browse All Apps</a></div>`;
+            document.getElementById("loadingState").style.display = "none";
+            document.getElementById("contentState").innerHTML = content;
+            document.getElementById("contentState").style.display = "block";
+        }
+        function renderChannelSection(channelLabel, build, app) {
+            const channelClass = channelLabel.toLowerCase();
+            const assetsByArch = groupAssetsByArchitecture(build.assets);
+            const getApk = (assets) => assets.find(a => a.name.toLowerCase().endsWith('.apk'));
+            const primaryApk = getApk(assetsByArch.all || []) || getApk(assetsByArch.arm64 || []) || getApk(assetsByArch.arm || []);
+            const secondaryApk = (assetsByArch.all && assetsByArch.all.length > 0) ? (getApk(assetsByArch.arm64 || []) || getApk(assetsByArch.arm || [])) : getApk(assetsByArch.arm || []);
+            let html = `<div class="channel-section"><div class="channel-header"><span class="channel-label ${channelClass}">${channelLabel}</span><span class="channel-meta">v${escapeHtml(build.version || build.build)} • ${formatDate(build.publishedAt)}</span></div><div class="downloads-grid">`;
+            if (primaryApk) {
+                const arch = capitalizeArch(primaryApk.arch), size = formatBytes(primaryApk.size), downloads = formatCompactNumber(primaryApk.download_count || 0);
+                html += `<div class="download-card primary"><div class="download-header"><div><div class="download-arch">${arch}</div><div class="download-hint">✓ Try this first</div></div><div class="download-meta">${size}<br>📥 ${downloads}</div></div><a href="${primaryApk.browser_download_url}" class="download-btn" download>Download ${escapeHtml(app.appName)}</a></div>`;
+            }
+            if (secondaryApk && secondaryApk !== primaryApk) {
+                const arch = capitalizeArch(secondaryApk.arch), size = formatBytes(secondaryApk.size), downloads = formatCompactNumber(secondaryApk.download_count || 0);
+                html += `<div class="download-card secondary"><div class="download-header"><div><div class="download-arch">${arch}</div><div class="download-hint">If first fails, try this</div></div><div class="download-meta">${size}<br>📥 ${downloads}</div></div><a href="${secondaryApk.browser_download_url}" class="download-btn" download>Download ${escapeHtml(app.appName)}</a></div>`;
+            }
+            html += `</div></div>`;
+            return html;
+        }
+        document.addEventListener("DOMContentLoaded", () => { setupTheme(); loadSharePage(); });
+    </script>
+</body>
+</html>
