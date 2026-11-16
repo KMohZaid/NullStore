@@ -98,6 +98,72 @@ const CONFIG = {
   }
 };
 
+// App icons are optional; catalog rendering must not wait on the icon feed.
+let appIconsCache = null;
+let appIconsRequest = null;
+
+function loadAppIcons() {
+  if (appIconsCache) return Promise.resolve(appIconsCache);
+  if (appIconsRequest) return appIconsRequest;
+  appIconsRequest = fetch("https://cdn.jsdelivr.net/gh/nvbangg/awesome-morphe@main/data/official-bundles.json")
+    .then(response => {
+      if (!response.ok) throw new Error(`Failed to load icon data (${response.status})`);
+      return response.json();
+    })
+    .then(data => {
+      appIconsCache = data.store || {};
+      updateAppCardIcons();
+      return appIconsCache;
+    })
+    .catch(error => {
+      console.warn("Could not load app icons:", error);
+      appIconsCache = {};
+      return appIconsCache;
+    });
+  return appIconsRequest;
+}
+
+function getAppIcon(packageName, appName) {
+  if (!appIconsCache) return null;
+  const directIcon = appIconsCache[packageName]?.iconUrl;
+  if (directIcon) return directIcon;
+  const normalizedName = normalizeForSearch(appName);
+  const matchingApp = Object.values(appIconsCache).find(
+    app => app.iconUrl && normalizeForSearch(app.name) === normalizedName
+  );
+  return matchingApp?.iconUrl || null;
+}
+
+function getAppIconForApp(app, preferredPackage) {
+  const packageNames = (app.brands || []).flatMap(brand =>
+    (brand.variants || []).map(variant => variant.packageName).filter(Boolean)
+  );
+  const candidates = [preferredPackage, ...packageNames].filter(Boolean);
+  for (const packageName of candidates) {
+    const iconUrl = appIconsCache?.[packageName]?.iconUrl;
+    if (iconUrl) return iconUrl;
+  }
+  return getAppIcon(null, app.appName);
+}
+
+function updateAppCardIcons() {
+  currentAppCatalog.forEach((app, index) => {
+    const card = DOM.builds?.querySelector(`.app-card[data-app-index="${index}"]`);
+    const titleGroup = card?.querySelector(".app-title-group");
+    if (!titleGroup || card.querySelector(".app-icon")) return;
+    const iconUrl = getAppIconForApp(app);
+    if (!iconUrl) return;
+    const icon = document.createElement("img");
+    icon.src = iconUrl;
+    icon.alt = `${app.appName} icon`;
+    icon.className = "app-icon";
+    icon.loading = "lazy";
+    icon.decoding = "async";
+    icon.addEventListener("error", () => icon.remove(), { once: true });
+    card.querySelector(".app-card-summary").insertBefore(icon, titleGroup);
+  });
+  window.updateSharePageIcon?.();
+}
 
 // Sort options for the header-style sort popup
 const SORT_ICONS = {
@@ -1086,6 +1152,7 @@ async function loadReleases() {
     if (DOM.loading) DOM.loading.style.display = "block";
     if (DOM.error) DOM.error.style.display = "none";
 
+    loadAppIcons();
     const dataResp = await fetch("https://cdn.jsdelivr.net/gh/nullcpy/nullcpy.github.io@main/data.json");
     if (!dataResp.ok) throw new Error(`Failed to load data.json (${dataResp.status})`);
     const data = await dataResp.json();
@@ -1309,9 +1376,13 @@ function createAppCard(app, index) {
   const totalDownloads = app.totalDownloads || 0;
   const dlBadge = `<span class="patch-stat-badge" title="${totalDownloads.toLocaleString()} Total Downloads">📥 ${formatCompactNumber(totalDownloads)}</span>`;
 
+  const iconUrl = getAppIconForApp(app);
+  const iconHtml = iconUrl ? `<img src="${iconUrl}" alt="${escapeHtml(app.appName)} icon" class="app-icon" loading="lazy" decoding="async" onerror="this.style.display='none'">` : '';
+
   return `
     <div class="build-card app-card" data-app-index="${index}">
       <div class="app-card-summary" role="button" tabindex="0">
+        ${iconHtml}
         <div class="app-title-group">
           <div class="app-name">${escapeHtml(app.appName)}</div>
         </div>
