@@ -99,69 +99,73 @@ const CONFIG = {
 };
 
 // App icons are optional; catalog rendering must not wait on the icon feed.
-let appIconsCache = null;
-let appIconsRequest = null;
+let appStoreCache = null;
+let appStoreRequest = null;
+let appStoreByName = null;
+const appStoreInfoByKey = new Map();
+let appCategoryFilter = "all";
+let appChipFilter = "all";
 
-function loadAppIcons() {
-  if (appIconsCache) return Promise.resolve(appIconsCache);
-  if (appIconsRequest) return appIconsRequest;
-  appIconsRequest = fetch("https://cdn.jsdelivr.net/gh/nvbangg/awesome-morphe@main/data/official-bundles.json")
+function formatPlayStoreInstalls(n) {
+  if (!n || typeof n !== "number" || n < 100) return null;
+  if (n >= 1_000_000_000) return Math.floor(n / 1_000_000_000) + "B+";
+  if (n >= 1_000_000) return Math.floor(n / 1_000_000) + "M+";
+  if (n >= 1_000) return Math.floor(n / 1_000) + "k+";
+  return Math.floor(n) + "+";
+}
+
+function loadAppStore() {
+  if (appStoreCache) return Promise.resolve(appStoreCache);
+  if (appStoreRequest) return appStoreRequest;
+  appStoreRequest = fetch("https://cdn.jsdelivr.net/gh/nvbangg/awesome-morphe@main/data/official-bundles.json")
     .then(response => {
-      if (!response.ok) throw new Error(`Failed to load icon data (${response.status})`);
+      if (!response.ok) throw new Error(`Failed to load app metadata (${response.status})`);
       return response.json();
     })
     .then(data => {
-      appIconsCache = data.store || {};
-      updateAppCardIcons();
-      return appIconsCache;
+      appStoreCache = data.store || {};
+      appStoreInfoByKey.clear();
+      appStoreByName = new Map();
+      for (const [pkg, item] of Object.entries(appStoreCache)) {
+        if (!item || !item.name) continue;
+        const key = normalizeForSearch(item.name);
+        const current = appStoreByName.get(key);
+        if (!current || (!current.iconUrl && item.iconUrl) || (!current.installs && item.installs)) {
+          appStoreByName.set(key, Object.assign({ packageName: pkg }, item));
+        }
+      }
+      refreshCatalogForAppStoreMetadata();
+      return appStoreCache;
     })
     .catch(error => {
-      console.warn("Could not load app icons:", error);
-      appIconsCache = {};
-      return appIconsCache;
+      console.warn("Could not load awesome-morphe metadata:", error);
+      appStoreCache = {};
+      appStoreByName = new Map();
+      return appStoreCache;
     });
-  return appIconsRequest;
+  return appStoreRequest;
 }
 
-function getAppIcon(packageName, appName) {
-  if (!appIconsCache) return null;
-  const directIcon = appIconsCache[packageName]?.iconUrl;
-  if (directIcon) return directIcon;
-  const normalizedName = normalizeForSearch(appName);
-  const matchingApp = Object.values(appIconsCache).find(
-    app => app.iconUrl && normalizeForSearch(app.name) === normalizedName
-  );
-  return matchingApp?.iconUrl || null;
-}
-
-function getAppIconForApp(app, preferredPackage) {
-  const packageNames = (app.brands || []).flatMap(brand =>
-    (brand.variants || []).map(variant => variant.packageName).filter(Boolean)
-  );
-  const candidates = [preferredPackage, ...packageNames].filter(Boolean);
-  for (const packageName of candidates) {
-    const iconUrl = appIconsCache?.[packageName]?.iconUrl;
-    if (iconUrl) return iconUrl;
+function getAppStoreInfo(app) {
+  if (!appStoreCache) return null;
+  if (appStoreInfoByKey.has(app.appKey)) return appStoreInfoByKey.get(app.appKey);
+  for (const brand of app.brands || []) {
+    for (const variant of brand.variants || []) {
+      const item = appStoreCache[variant.packageName];
+      if (item) {
+        const enriched = Object.assign({ packageName: variant.packageName }, item);
+        appStoreInfoByKey.set(app.appKey, enriched);
+        return enriched;
+      }
+    }
   }
-  return getAppIcon(null, app.appName);
+  const byName = appStoreByName?.get(normalizeForSearch(app.appName)) || null;
+  appStoreInfoByKey.set(app.appKey, byName);
+  return byName;
 }
 
-function updateAppCardIcons() {
-  currentAppCatalog.forEach((app, index) => {
-    const card = DOM.builds?.querySelector(`.app-card[data-app-index="${index}"]`);
-    const titleGroup = card?.querySelector(".app-title-group");
-    if (!titleGroup || card.querySelector(".app-icon")) return;
-    const iconUrl = getAppIconForApp(app);
-    if (!iconUrl) return;
-    const icon = document.createElement("img");
-    icon.src = iconUrl;
-    icon.alt = `${app.appName} icon`;
-    icon.className = "app-icon";
-    icon.loading = "lazy";
-    icon.decoding = "async";
-    icon.addEventListener("error", () => icon.remove(), { once: true });
-    card.querySelector(".app-card-summary").insertBefore(icon, titleGroup);
-  });
+function refreshCatalogForAppStoreMetadata() {
+  if (cachedFullCatalog.length) filterAndRenderReleases();
   window.updateSharePageIcon?.();
 }
 
@@ -169,6 +173,8 @@ function updateAppCardIcons() {
 const SORT_ICONS = {
   recent:
     '<svg class="sort-opt-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>',
+  playstore:
+    '<svg class="sort-opt-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 3 14 9-14 9V3Z"></path></svg>',
   popular:
     '<svg class="sort-opt-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"></path></svg>',
   name:
@@ -177,6 +183,7 @@ const SORT_ICONS = {
 
 const SORT_OPTIONS = [
   { value: "recent", label: "Recent", icon: SORT_ICONS.recent },
+  { value: "playstore", label: "Popular by PlayStore", icon: SORT_ICONS.playstore },
   { value: "popular", label: "Popular", icon: SORT_ICONS.popular },
   { value: "name", label: "Name", icon: SORT_ICONS.name },
 ];
@@ -210,6 +217,12 @@ function initDOM() {
   DOM.sortTriggerIcon = document.getElementById("sortTriggerIcon");
   DOM.sortMenu = document.getElementById("sortMenu");
   DOM.appFilterButtons = document.getElementById("appFilterButtons");
+  DOM.categoryDropdown = document.getElementById("categoryDropdown");
+  DOM.categoryDropdownTrigger = document.getElementById("categoryDropdownTrigger");
+  DOM.categoryDropdownLabel = document.getElementById("categoryDropdownLabel");
+  DOM.categoryDropdownCount = document.getElementById("categoryDropdownCount");
+  DOM.clearCategoryFilter = document.getElementById("clearCategoryFilter");
+  DOM.categoryDropdownMenu = document.getElementById("categoryDropdownMenu");
   DOM.catalogCountText = document.getElementById("catalogCountText");
   DOM.lastUpdateText = document.getElementById("lastUpdateText");
   DOM.themeBtn = document.getElementById("themeMenuBtn");
@@ -266,7 +279,6 @@ let cachedPatchSets = []; // Shared top-level appliedPatches table (schema v2 de
 let cachedChangelogSets = []; // Shared top-level changelogs table (schema v2 dedup)
 let cachedPatchSourceSets = []; // Shared top-level patchSources table (schema v2 dedup)
 let searchTerm = "";
-let appCategoryFilter = "all";
 let sortMode = "recent"; // "recent" | "popular" | "name"
 let currentAppCatalog = [];
 // appKey -> app lookup, rebuilt whenever the rendered catalog changes, so a modal
@@ -330,7 +342,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   const urlSort = urlParams.get("sort");
-  if (urlSort && ["recent", "popular", "name"].includes(urlSort)) {
+  if (urlSort && ["recent", "playstore", "popular", "name"].includes(urlSort)) {
     sortMode = urlSort;
     updateSortUI();
   }
@@ -475,12 +487,49 @@ function setupEventListeners() {
     DOM.searchClearBtn.addEventListener("click", handleClear);
   }
 
-  // Secondary Category Filter Buttons
+  if (DOM.categoryDropdown && DOM.categoryDropdownTrigger && DOM.categoryDropdownMenu) {
+    DOM.categoryDropdownTrigger.addEventListener("click", (e) => {
+      if (e.target.closest("#clearCategoryFilter")) return;
+      if (e.target.closest("#categoryDropdownMenu")) return;
+      e.stopPropagation();
+      const isOpen = DOM.categoryDropdown.classList.toggle("open");
+      DOM.categoryDropdownTrigger.setAttribute("aria-expanded", String(isOpen));
+      DOM.categoryDropdownMenu.hidden = !isOpen;
+    });
+    DOM.clearCategoryFilter?.addEventListener("click", (e) => {
+      e.stopPropagation();
+      appCategoryFilter = "all";
+      filterAndRenderReleases();
+    });
+    DOM.categoryDropdownMenu.addEventListener("click", (e) => {
+      const option = e.target.closest("[data-category]");
+      if (!option) return;
+      appCategoryFilter = option.dataset.category || "all";
+      appChipFilter = "all";
+      DOM.categoryDropdown.classList.remove("open");
+      DOM.categoryDropdownTrigger.setAttribute("aria-expanded", "false");
+      DOM.categoryDropdownMenu.hidden = true;
+      filterAndRenderReleases();
+    });
+    document.addEventListener("click", (e) => {
+      if (!DOM.categoryDropdown.contains(e.target)) {
+        DOM.categoryDropdown.classList.remove("open");
+        DOM.categoryDropdownTrigger.setAttribute("aria-expanded", "false");
+        DOM.categoryDropdownMenu.hidden = true;
+      }
+    });
+  }
+
   if (DOM.appFilterButtons) {
     DOM.appFilterButtons.addEventListener("click", (e) => {
-      const filterBtn = e.target.closest(".filter-btn");
-      if (!filterBtn) return;
-      appCategoryFilter = filterBtn.dataset.filter || "all";
+      const btn = e.target.closest(".filter-btn");
+      if (!btn) return;
+      const targetFilter = btn.dataset.filter || "all";
+      if (targetFilter === "all") {
+        appChipFilter = "all";
+      } else {
+        appChipFilter = (appChipFilter === targetFilter ? "all" : targetFilter);
+      }
       filterAndRenderReleases();
     });
   }
@@ -1152,7 +1201,7 @@ async function loadReleases() {
     if (DOM.loading) DOM.loading.style.display = "block";
     if (DOM.error) DOM.error.style.display = "none";
 
-    loadAppIcons();
+    loadAppStore();
     const dataResp = await fetch("https://cdn.jsdelivr.net/gh/nullcpy/nullcpy.github.io@main/data.json");
     if (!dataResp.ok) throw new Error(`Failed to load data.json (${dataResp.status})`);
     const data = await dataResp.json();
@@ -1184,36 +1233,37 @@ async function loadReleases() {
   }
 }
 
+function applyKeywordFilter(apps, keywords) {
+  if (!keywords) return apps;
+  const includes = keywords.filter((k) => !k.startsWith("!"));
+  const excludes = keywords.filter((k) => k.startsWith("!")).map((k) => k.slice(1));
+  return apps.filter((app) => {
+    const si = getSI(app);
+    const hit = (kw) => si.name.includes(kw) || si.key.includes(kw) || si.namePlus.includes(kw);
+    return includes.some(hit) && !excludes.some(hit);
+  });
+}
+
+function applyFilters(apps) {
+  if (appCategoryFilter !== "all" && appStoreCache) {
+    apps = apps.filter((app) => getAppStoreInfo(app)?.category === appCategoryFilter);
+  }
+  if (appChipFilter !== "all" && CONFIG.appCategories[appChipFilter]) {
+    apps = applyKeywordFilter(apps, CONFIG.appCategories[appChipFilter]);
+  }
+  return apps;
+}
+
 // Filter and Render Catalog
 function filterAndRenderReleases() {
-  renderCategoryFilterButtons();
-
-  if (
-    appCategoryFilter !== "all" &&
-    !CONFIG.appCategories[appCategoryFilter]
-  ) {
-    appCategoryFilter = "all";
-  }
-
-  // 1. Search Query Filter
-  let apps = filterCatalogBySearch(cachedFullCatalog, searchTerm);
-
-  // 2. Category Filter
-  apps = applyCategoryFilter(apps);
-
-  // 3. Fast Sort Mode (O(1) lookups)
-  apps = applySortMode(apps);
-
-  // 4. Update Status Text
-  updateCatalogStatus(apps);
-
-  // 5. Render
-  renderAppCards(apps);
-  updateAppFilterButtons();
+  const searchedApps = filterCatalogBySearch(cachedFullCatalog, searchTerm);
+  const filteredApps = applyFilters(searchedApps);
+  updateCatalogStatus(filteredApps, searchedApps);
+  renderAppCards(applySortMode(filteredApps));
   if (DOM.loading) DOM.loading.style.display = "none";
 }
 
-function updateCatalogStatus(apps) {
+function updateCatalogStatus(apps, searchedApps) {
   if (!DOM.catalogCountText) return;
   const totalApps = apps.length;
   let totalBuilds = 0;
@@ -1224,32 +1274,79 @@ function updateCatalogStatus(apps) {
   });
 
   DOM.catalogCountText.textContent = `Showing ${totalApps} app${totalApps === 1 ? "" : "s"} (${totalBuilds} build${totalBuilds === 1 ? "" : "s"})`;
+  updateFilterControls(searchedApps);
 }
 
-function updateAppFilterButtons() {
-  document.querySelectorAll("#appFilterButtons .filter-btn").forEach((btn) => {
-    btn.classList.toggle("active", btn.dataset.filter === appCategoryFilter);
-  });
-}
+function updateFilterControls(searchedApps) {
 
-function applyCategoryFilter(apps) {
-  const keywords = CONFIG.appCategories[appCategoryFilter];
-  if (!keywords) return apps;
+  // 1. Update Category Dropdown Menu & Trigger
+  if (DOM.categoryDropdownMenu) {
+    const categories = new Map();
+    for (const app of searchedApps) {
+      const cat = getAppStoreInfo(app)?.category;
+      if (cat) categories.set(cat, (categories.get(cat) || 0) + 1);
+    }
 
-  const includes = keywords.filter((k) => !k.startsWith("!"));
-  const excludes = keywords.filter((k) => k.startsWith("!")).map((k) => k.slice(1));
+    const currentCount = appCategoryFilter === "all"
+      ? searchedApps.length
+      : (categories.get(appCategoryFilter) || 0);
 
-  return apps.filter((app) => {
-    const si = getSI(app);
-    const hit = (kw) => si.name.includes(kw) || si.key.includes(kw) || si.namePlus.includes(kw);
-    const isIncluded = includes.some(hit);
-    const isExcluded = excludes.some(hit);
-    return isIncluded && !isExcluded;
-  });
+    if (DOM.categoryDropdownLabel) {
+      DOM.categoryDropdownLabel.textContent = appCategoryFilter === "all" ? "All Categories" : appCategoryFilter;
+    }
+    if (DOM.categoryDropdownCount) {
+      DOM.categoryDropdownCount.textContent = currentCount;
+    }
+    if (DOM.clearCategoryFilter) {
+      DOM.clearCategoryFilter.hidden = appCategoryFilter === "all";
+    }
+
+    let menuHtml = `<button class="dropdown-item category-dropdown-option${appCategoryFilter === "all" ? " active" : ""}" type="button" role="menuitem" data-category="all">` +
+      `<span class="category-option-name">All Categories</span>` +
+      `<span class="category-option-count">${searchedApps.length}</span>` +
+      `</button>`;
+
+    const sortedCats = [...categories.keys()].sort((a, b) => a.localeCompare(b));
+    for (const cat of sortedCats) {
+      const count = categories.get(cat);
+      const active = appCategoryFilter === cat;
+      menuHtml += `<button class="dropdown-item category-dropdown-option${active ? " active" : ""}" type="button" role="menuitem" data-category="${escapeHtml(cat)}">` +
+        `<span class="category-option-name">${escapeHtml(cat)}</span>` +
+        `<span class="category-option-count">${count}</span>` +
+        `</button>`;
+    }
+    DOM.categoryDropdownMenu.innerHTML = menuHtml;
+  }
+
+  // 2. Render Original Chips with counts scoped to the selected Play Store category
+  if (DOM.appFilterButtons) {
+    const chipBaseApps = applyFilters(searchedApps);
+    const isAllActive = appChipFilter === "all";
+    let visibleChipCount = 1;
+    let chipsHtml = `<button class="filter-btn${isAllActive ? " active" : ""}" data-filter="all" type="button">All Apps <span class="filter-count">${chipBaseApps.length}</span></button>`;
+
+    for (const [catKey, keywords] of Object.entries(CONFIG.appCategories)) {
+      const count = applyKeywordFilter(chipBaseApps, keywords).length;
+      if (count === 0) continue;
+      visibleChipCount++;
+      const isActive = appChipFilter === catKey;
+      chipsHtml += `<button class="filter-btn category-filter-btn${isActive ? " active" : ""}" data-filter="${escapeHtml(catKey)}" type="button">${escapeHtml(catKey)} <span class="filter-count">${count}</span></button>`;
+    }
+
+    DOM.appFilterButtons.innerHTML = chipsHtml;
+    DOM.appFilterButtons.hidden = visibleChipCount <= 1;
+  }
 }
 
 // O(1) Instant Property Comparisons
 function applySortMode(apps) {
+  if (sortMode === "playstore") {
+    return [...apps].sort((a, b) => {
+      const installsA = getAppStoreInfo(a)?.installs || 0;
+      const installsB = getAppStoreInfo(b)?.installs || 0;
+      return installsB - installsA || (a.appName || "").localeCompare(b.appName || "");
+    });
+  }
   if (sortMode === "popular") {
     return [...apps].sort((a, b) => (b.totalDownloads || 0) - (a.totalDownloads || 0));
   }
@@ -1374,9 +1471,15 @@ function renderAppCards(apps) {
 // -- 118 collapsed summaries instead of 118 fully-expanded trees.
 function createAppCard(app, index) {
   const totalDownloads = app.totalDownloads || 0;
-  const dlBadge = `<span class="patch-stat-badge" title="${totalDownloads.toLocaleString()} Total Downloads">📥 ${formatCompactNumber(totalDownloads)}</span>`;
+  const appStoreInfo = getAppStoreInfo(app);
+  const formattedInstalls = appStoreInfo ? formatPlayStoreInstalls(appStoreInfo.installs) : null;
+  const playStorePkg = appStoreInfo?.packageName;
+  const playStoreBadge = (formattedInstalls && playStorePkg)
+    ? `<a href="https://play.google.com/store/apps/details?id=${encodeURIComponent(playStorePkg)}" class="play-store-badge" target="_blank" rel="noopener noreferrer" title="View ${escapeHtml(app.appName)} on Google Play (${formattedInstalls} installs)" onclick="event.stopPropagation()"><img src="https://upload.wikimedia.org/wikipedia/commons/2/2f/Google_Play_2022_icon.svg" alt="Google Play" loading="lazy"><span>${formattedInstalls}</span></a>`
+    : "";
+  const dlBadge = `<span class="patch-stat-badge" title="${totalDownloads.toLocaleString()} NullStore downloads">📥 ${formatCompactNumber(totalDownloads)}</span>`;
 
-  const iconUrl = getAppIconForApp(app);
+  const iconUrl = appStoreInfo?.iconUrl || null;
   const iconHtml = iconUrl ? `<img src="${iconUrl}" alt="${escapeHtml(app.appName)} icon" class="app-icon" loading="lazy" decoding="async" onerror="this.style.display='none'">` : '';
 
   return `
@@ -1387,6 +1490,7 @@ function createAppCard(app, index) {
           <div class="app-name">${escapeHtml(app.appName)}</div>
         </div>
         <div class="app-badge-group">
+          ${playStoreBadge}
           ${dlBadge}
           <svg class="app-card-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
             <polyline points="6 9 12 15 18 9"></polyline>
@@ -1406,7 +1510,7 @@ function createAppCard(app, index) {
 function buildAppCardBody(app) {
   const toTimestamp = (val) => (typeof val === "number" ? val : Date.parse(val) || 0);
   let brands = [...(app.brands || [])];
-  if (sortMode === "popular") {
+  if (sortMode === "popular" || sortMode === "playstore") {
     brands.sort((a, b) => (b.totalDownloads || 0) - (a.totalDownloads || 0));
   } else if (sortMode === "name") {
     brands.sort((a, b) => (a.brandName || "").localeCompare(b.brandName || ""));
@@ -1712,22 +1816,6 @@ function createBrandMarkup(app, brand) {
       </div>
     </div>
   `;
-}
-
-// Category Filter Buttons Generator (Exclusively from CONFIG.appCategories)
-function renderCategoryFilterButtons() {
-  if (!DOM.appFilterButtons) return;
-
-  DOM.appFilterButtons.querySelectorAll(".category-filter-btn").forEach((btn) => btn.remove());
-
-  Object.keys(CONFIG.appCategories).forEach((catKey) => {
-    const button = document.createElement("button");
-    button.className = "filter-btn category-filter-btn";
-    button.dataset.filter = catKey;
-    button.type = "button";
-    button.textContent = catKey;
-    DOM.appFilterButtons.appendChild(button);
-  });
 }
 
 // Download Modal Controller
