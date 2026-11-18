@@ -117,7 +117,7 @@ function formatPlayStoreInstalls(n) {
 function loadAppStore() {
   if (appStoreCache) return Promise.resolve(appStoreCache);
   if (appStoreRequest) return appStoreRequest;
-  appStoreRequest = fetch("https://cdn.jsdelivr.net/gh/nvbangg/awesome-morphe@main/data/official-bundles.json")
+  appStoreRequest = fetch("https://raw.githubusercontent.com/nvbangg/awesome-morphe/main/data/official-bundles.json")
     .then(response => {
       if (!response.ok) throw new Error(`Failed to load app metadata (${response.status})`);
       return response.json();
